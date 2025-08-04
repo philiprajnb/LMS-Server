@@ -1,0 +1,26 @@
+const express = require('express');
+const LeadController = require('../controllers/leadController');
+const {
+  validateCreateLead,
+  validateUpdateLead,
+  validateQueryParams,
+  validateLeadId
+} = require('../middleware/validation');
+
+const router = express.Router();
+const leadController = new LeadController();
+
+// Lead CRUD routes
+router.post('/', validateCreateLead, leadController.createLead);
+router.get('/', validateQueryParams, leadController.getAllLeads);
+router.get('/stats', leadController.getLeadStats);
+router.get('/:id', validateLeadId, leadController.getLeadById);
+router.put('/:id', validateLeadId, validateUpdateLead, leadController.updateLead);
+router.delete('/:id', validateLeadId, leadController.deleteLead);
+router.delete('/:id/hard', validateLeadId, leadController.hardDeleteLead);
+
+// Bulk operations
+router.post('/bulk/update', leadController.bulkUpdateLeads);
+router.post('/bulk/delete', leadController.bulkDeleteLeads);
+
+module.exports = router;
