@@ -1,0 +1,140 @@
+### Lead Management System API - Sample Requests
+
+### Health Check
+GET http://localhost:3000/health
+
+### API Documentation
+GET http://localhost:3000/api
+
+### Create a new lead
+POST http://localhost:3000/api/leads
+Content-Type: application/json
+
+{
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john.doe@example.com",
+  "phone": "+1-555-123-4567",
+  "company": "Tech Solutions Inc",
+  "job_title": "CTO",
+  "lead_source": "Website",
+  "status": "New",
+  "lead_score": 85,
+  "industry": "Technology",
+  "location": {
+    "city": "San Francisco",
+    "state": "CA",
+    "country": "USA"
+  },
+  "notes": "Interested in our enterprise solution",
+  "priority": "High",
+  "tags": ["enterprise", "hot-lead"],
+  "deal_stage": "Discovery",
+  "source_campaign": "Q1-2024-Enterprise",
+  "communication_channel": "Email"
+}
+
+### Create another lead
+POST http://localhost:3000/api/leads
+Content-Type: application/json
+
+{
+  "first_name": "Jane",
+  "last_name": "Smith",
+  "email": "jane.smith@acme.com",
+  "phone": "+1-555-987-6543",
+  "company": "ACME Corporation",
+  "job_title": "Marketing Director",
+  "lead_source": "Referral",
+  "status": "Contacted",
+  "lead_score": 65,
+  "industry": "Marketing",
+  "location": {
+    "city": "New York",
+    "state": "NY",
+    "country": "USA"
+  },
+  "notes": "Referred by existing client",
+  "priority": "Medium",
+  "tags": ["referral", "marketing"],
+  "deal_stage": "Proposal"
+}
+
+### Get all leads (with default pagination)
+GET http://localhost:3000/api/leads
+
+### Get leads with filtering and pagination
+GET http://localhost:3000/api/leads?status=New&priority=High&page=1&limit=5&sort_by=created_at&sort_order=desc
+
+### Get leads with search
+GET http://localhost:3000/api/leads?search=john&company=Tech
+
+### Get a specific lead by ID (replace with actual ID)
+GET http://localhost:3000/api/leads/{{leadId}}
+
+### Update a lead (replace with actual ID)
+PUT http://localhost:3000/api/leads/{{leadId}}
+Content-Type: application/json
+
+{
+  "status": "Qualified",
+  "lead_score": 90,
+  "notes": "Very interested, scheduled demo for next week",
+  "next_follow_up": "2024-02-15T10:00:00.000Z",
+  "deal_stage": "Negotiation"
+}
+
+### Soft delete a lead (replace with actual ID)
+DELETE http://localhost:3000/api/leads/{{leadId}}
+
+### Hard delete a lead (replace with actual ID)
+DELETE http://localhost:3000/api/leads/{{leadId}}/hard
+
+### Get lead statistics
+GET http://localhost:3000/api/leads/stats
+
+### Bulk update leads
+POST http://localhost:3000/api/leads/bulk/update
+Content-Type: application/json
+
+{
+  "lead_ids": ["lead-id-1", "lead-id-2"],
+  "update_data": {
+    "assigned_to": "user-id-123",
+    "status": "Contacted"
+  }
+}
+
+### Bulk delete leads
+POST http://localhost:3000/api/leads/bulk/delete
+Content-Type: application/json
+
+{
+  "lead_ids": ["lead-id-1", "lead-id-2"]
+}
+
+### Invalid requests for testing validation
+
+### Create lead with missing required fields
+POST http://localhost:3000/api/leads
+Content-Type: application/json
+
+{
+  "first_name": "Test",
+  "email": "invalid-email"
+}
+
+### Create lead with invalid email
+POST http://localhost:3000/api/leads
+Content-Type: application/json
+
+{
+  "first_name": "Test",
+  "last_name": "User",
+  "email": "not-an-email",
+  "company": "Test Company",
+  "lead_source": "Test"
+}
+
+### Get lead with invalid UUID
+GET http://localhost:3000/api/leads/invalid-uuid
