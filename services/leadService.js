@@ -1,230 +1,238 @@
 const Lead = require('../models/Lead');
 
 class LeadService {
-  constructor() {
-    // In-memory storage (in production, this would be a database)
-    this.leads = new Map();
-    this.emailIndex = new Map(); // For email uniqueness check
-  }
-
   // Create a new lead
   async create(leadData) {
-    // Check if email already exists (if email uniqueness is required)
-    if (leadData.email && this.emailIndex.has(leadData.email.toLowerCase())) {
-      throw new Error('A lead with this email already exists');
+    try {
+      const lead = new Lead(leadData);
+      await lead.save();
+      return lead;
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new Error('A lead with this email already exists');
+      }
+      throw error;
     }
-
-    const lead = new Lead(leadData);
-    this.leads.set(lead.id, lead);
-    
-    // Index email for uniqueness
-    if (lead.email) {
-      this.emailIndex.set(lead.email.toLowerCase(), lead.id);
-    }
-
-    return lead;
   }
 
   // Get all leads with filtering, pagination, and sorting
   async findAll(queryParams = {}) {
-    const {
-      page = 1,
-      limit = 10,
-      status,
-      priority,
-      assigned_to,
-      company,
-      lead_source,
-      is_converted,
-      search,
-      sort_by = 'created_at',
-      sort_order = 'desc'
-    } = queryParams;
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        status,
+        priority,
+        assigned_to,
+        company_name,
+        lead_source,
+        is_converted,
+        industry,
+        role_in_decision,
+        search,
+        sort_by = 'created_at',
+        sort_order = 'desc'
+      } = queryParams;
 
-    let filteredLeads = Array.from(this.leads.values())
-      .filter(lead => !lead.deleted_at); // Exclude soft-deleted leads
+      // Build filter object
+      const filter = {};
+      
+      if (status) filter.status = status;
+      if (priority) filter.priority = priority;
+      if (assigned_to) filter.assigned_to = assigned_to;
+      if (company_name) filter.company_name = { $regex: company_name, $options: 'i' };
+      if (lead_source) filter.lead_source = lead_source;
+      if (is_converted !== undefined) filter.is_converted = is_converted;
+      if (industry) filter.industry = { $regex: industry, $options: 'i' };
+      if (role_in_decision) filter.role_in_decision = role_in_decision;
 
-    // Apply filters
-    if (status) {
-      filteredLeads = filteredLeads.filter(lead => lead.status === status);
-    }
-    if (priority) {
-      filteredLeads = filteredLeads.filter(lead => lead.priority === priority);
-    }
-    if (assigned_to) {
-      filteredLeads = filteredLeads.filter(lead => lead.assigned_to === assigned_to);
-    }
-    if (company) {
-      filteredLeads = filteredLeads.filter(lead => 
-        lead.company.toLowerCase().includes(company.toLowerCase())
-      );
-    }
-    if (lead_source) {
-      filteredLeads = filteredLeads.filter(lead => lead.lead_source === lead_source);
-    }
-    if (is_converted !== undefined) {
-      filteredLeads = filteredLeads.filter(lead => lead.is_converted === is_converted);
-    }
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredLeads = filteredLeads.filter(lead => 
-        lead.first_name.toLowerCase().includes(searchLower) ||
-        lead.last_name.toLowerCase().includes(searchLower) ||
-        lead.email.toLowerCase().includes(searchLower) ||
-        lead.company.toLowerCase().includes(searchLower) ||
-        (lead.notes && lead.notes.toLowerCase().includes(searchLower))
-      );
-    }
-
-    // Sort leads
-    filteredLeads.sort((a, b) => {
-      let aValue = a[sort_by];
-      let bValue = b[sort_by];
-
-      // Handle different data types
-      if (sort_by === 'created_at' || sort_by === 'updated_at') {
-        aValue = new Date(aValue);
-        bValue = new Date(bValue);
-      } else if (typeof aValue === 'string') {
-        aValue = aValue.toLowerCase();
-        bValue = bValue ? bValue.toLowerCase() : '';
+      // Text search across multiple fields
+      if (search) {
+        filter.$or = [
+          { first_name: { $regex: search, $options: 'i' } },
+          { last_name: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { company_name: { $regex: search, $options: 'i' } },
+          { notes: { $regex: search, $options: 'i' } }
+        ];
       }
 
-      if (sort_order === 'asc') {
-        return aValue > bValue ? 1 : -1;
-      } else {
-        return aValue < bValue ? 1 : -1;
-      }
-    });
+      // Build sort object
+      const sort = {};
+      sort[sort_by] = sort_order === 'asc' ? 1 : -1;
 
-    // Pagination
-    const total = filteredLeads.length;
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedLeads = filteredLeads.slice(startIndex, endIndex);
+      // Execute query with pagination
+      const skip = (page - 1) * limit;
+      
+      const [leads, totalItems] = await Promise.all([
+        Lead.find(filter)
+          .sort(sort)
+          .skip(skip)
+          .limit(parseInt(limit)),
+        Lead.countDocuments(filter)
+      ]);
 
-    return {
-      leads: paginatedLeads,
-      pagination: {
-        current_page: page,
-        per_page: limit,
-        total_items: total,
-        total_pages: Math.ceil(total / limit),
-        has_next_page: endIndex < total,
-        has_prev_page: page > 1
-      }
-    };
+      const totalPages = Math.ceil(totalItems / limit);
+
+      return {
+        leads,
+        pagination: {
+          current_page: parseInt(page),
+          per_page: parseInt(limit),
+          total_items: totalItems,
+          total_pages: totalPages,
+          has_next_page: page < totalPages,
+          has_prev_page: page > 1
+        }
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   // Get a single lead by ID
   async findById(id) {
-    const lead = this.leads.get(id);
-    if (!lead || lead.deleted_at) {
-      return null;
+    try {
+      const lead = await Lead.findOne({ id });
+      return lead;
+    } catch (error) {
+      throw error;
     }
-    return lead;
   }
 
   // Update a lead
   async update(id, updateData) {
-    const lead = await this.findById(id);
-    if (!lead) {
-      return null;
-    }
-
-    // Check email uniqueness if email is being updated
-    if (updateData.email && updateData.email !== lead.email) {
-      const emailLower = updateData.email.toLowerCase();
-      if (this.emailIndex.has(emailLower)) {
-        throw new Error('A lead with this email already exists');
+    try {
+      const lead = await Lead.findOne({ id });
+      if (!lead) {
+        return null;
       }
-      
-      // Update email index
-      if (lead.email) {
-        this.emailIndex.delete(lead.email.toLowerCase());
-      }
-      this.emailIndex.set(emailLower, lead.id);
-    }
 
-    lead.update(updateData);
-    return lead;
+      const updatedLead = await lead.updateLead(updateData);
+      return updatedLead;
+    } catch (error) {
+      throw error;
+    }
   }
 
-  // Soft delete a lead
+  // Delete a lead (soft delete)
   async delete(id) {
-    const lead = await this.findById(id);
-    if (!lead) {
-      return null;
-    }
+    try {
+      const lead = await Lead.findOne({ id });
+      if (!lead) {
+        return null;
+      }
 
-    lead.softDelete();
-    
-    // Remove from email index
-    if (lead.email) {
-      this.emailIndex.delete(lead.email.toLowerCase());
+      await lead.softDelete();
+      return lead;
+    } catch (error) {
+      throw error;
     }
-
-    return lead;
   }
 
-  // Hard delete a lead (permanent removal)
+  // Hard delete a lead
   async hardDelete(id) {
-    const lead = this.leads.get(id);
-    if (!lead) {
-      return false;
+    try {
+      const lead = await Lead.findOneAndDelete({ id });
+      return lead;
+    } catch (error) {
+      throw error;
     }
-
-    // Remove from email index
-    if (lead.email) {
-      this.emailIndex.delete(lead.email.toLowerCase());
-    }
-
-    this.leads.delete(id);
-    return true;
   }
 
   // Get lead statistics
   async getStats() {
-    const activeLeads = Array.from(this.leads.values())
-      .filter(lead => !lead.deleted_at);
+    try {
+      const stats = await Lead.aggregate([
+        {
+          $group: {
+            _id: null,
+            total_leads: { $sum: 1 },
+            converted_leads: { $sum: { $cond: ['$is_converted', 1, 0] } },
+            new_leads: { $sum: { $cond: [{ $eq: ['$status', 'New'] }, 1, 0] } },
+            contacted_leads: { $sum: { $cond: [{ $eq: ['$status', 'Contacted'] }, 1, 0] } },
+            qualified_leads: { $sum: { $cond: [{ $eq: ['$status', 'Qualified'] }, 1, 0] } },
+            lost_leads: { $sum: { $cond: [{ $eq: ['$status', 'Lost'] }, 1, 0] } }
+          }
+        }
+      ]);
 
-    const stats = {
-      total_leads: activeLeads.length,
-      by_status: {},
-      by_priority: {},
-      converted_count: 0,
-      average_lead_score: 0
-    };
+      const statusDistribution = await Lead.aggregate([
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } }
+      ]);
 
-    let totalScore = 0;
-    let scoredLeads = 0;
+      const priorityDistribution = await Lead.aggregate([
+        {
+          $group: {
+            _id: '$priority',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } }
+      ]);
 
-    activeLeads.forEach(lead => {
-      // Count by status
-      stats.by_status[lead.status] = (stats.by_status[lead.status] || 0) + 1;
+      const industryDistribution = await Lead.aggregate([
+        {
+          $match: { industry: { $exists: true, $ne: null } }
+        },
+        {
+          $group: {
+            _id: '$industry',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]);
 
-      // Count by priority
-      if (lead.priority) {
-        stats.by_priority[lead.priority] = (stats.by_priority[lead.priority] || 0) + 1;
-      }
-
-      // Count converted leads
-      if (lead.is_converted) {
-        stats.converted_count++;
-      }
-
-      // Calculate average lead score
-      if (lead.lead_score !== null) {
-        totalScore += lead.lead_score;
-        scoredLeads++;
-      }
-    });
-
-    if (scoredLeads > 0) {
-      stats.average_lead_score = Math.round(totalScore / scoredLeads);
+      return {
+        overview: stats[0] || {
+          total_leads: 0,
+          converted_leads: 0,
+          new_leads: 0,
+          contacted_leads: 0,
+          qualified_leads: 0,
+          lost_leads: 0
+        },
+        status_distribution: statusDistribution,
+        priority_distribution: priorityDistribution,
+        industry_distribution: industryDistribution
+      };
+    } catch (error) {
+      throw error;
     }
+  }
 
-    return stats;
+  // Bulk update leads
+  async bulkUpdate(leadIds, updateData) {
+    try {
+      const result = await Lead.updateMany(
+        { id: { $in: leadIds } },
+        { ...updateData, updated_at: new Date() }
+      );
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Bulk delete leads
+  async bulkDelete(leadIds) {
+    try {
+      const result = await Lead.updateMany(
+        { id: { $in: leadIds } },
+        { deleted_at: new Date(), updated_at: new Date() }
+      );
+      return result;
+    } catch (error) {
+      throw error;
+    }
   }
 }
 
