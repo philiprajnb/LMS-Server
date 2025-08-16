@@ -106,7 +106,10 @@ app.get('/api', (req, res) => {
         'DELETE /api/leads/:id': 'Soft delete a specific lead',
         'DELETE /api/leads/:id/hard': 'Permanently delete a specific lead',
         'POST /api/leads/bulk/update': 'Bulk update multiple leads',
-        'POST /api/leads/bulk/delete': 'Bulk delete multiple leads'
+        'POST /api/leads/bulk/delete': 'Bulk delete multiple leads',
+        'GET /api/leads/:id/scoring': 'Get lead scoring analysis and breakdown',
+        'GET /api/leads/:id/recommendations': 'Get lead scoring recommendations',
+        'POST /api/leads/bulk/score': 'Bulk score multiple leads'
       }
     },
     schema: {

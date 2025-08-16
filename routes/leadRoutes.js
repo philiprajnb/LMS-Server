@@ -21,4 +21,9 @@ router.delete('/:id/hard', validateLeadId, leadController.hardDeleteLead);
 router.post('/bulk/update', leadController.bulkUpdateLeads);
 router.post('/bulk/delete', leadController.bulkDeleteLeads);
 
+// Lead scoring endpoints
+router.get('/:id/scoring', validateLeadId, leadController.getLeadScoring);
+router.get('/:id/recommendations', validateLeadId, leadController.getLeadRecommendations);
+router.post('/bulk/score', leadController.bulkScoreLeads);
+
 module.exports = router;

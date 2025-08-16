@@ -195,6 +195,118 @@ class LeadController {
       next(error);
     }
   };
+
+  // Get lead scoring analysis
+  getLeadScoring = async (req, res, next) => {
+    try {
+      const lead = await this.leadService.findById(req.params.id);
+      
+      if (!lead) {
+        return res.status(404).json({
+          success: false,
+          message: 'Lead not found'
+        });
+      }
+
+      const LeadScoringService = require('../services/leadScoringService');
+      const scoringService = new LeadScoringService();
+      
+      const scoringBreakdown = scoringService.getScoringBreakdown(lead);
+      
+      res.json({
+        success: true,
+        message: 'Lead scoring analysis retrieved successfully',
+        data: {
+          lead_id: lead.id,
+          current_score: lead.lead_score || 0,
+          classification: scoringBreakdown.classification,
+          breakdown: scoringBreakdown,
+          scoring_metadata: lead.scoring_metadata
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // Get lead scoring recommendations
+  getLeadRecommendations = async (req, res, next) => {
+    try {
+      const lead = await this.leadService.findById(req.params.id);
+      
+      if (!lead) {
+        return res.status(404).json({
+          success: false,
+          message: 'Lead not found'
+        });
+      }
+
+      const LeadScoringService = require('../services/leadScoringService');
+      const scoringService = new LeadScoringService();
+      
+      const recommendations = scoringService.getScoringRecommendations(lead);
+      
+      res.json({
+        success: true,
+        message: 'Lead scoring recommendations retrieved successfully',
+        data: {
+          lead_id: lead.id,
+          current_score: lead.lead_score || 0,
+          recommendations: recommendations,
+          potential_score_increase: recommendations.reduce((sum, rec) => sum + rec.potential_score_increase, 0)
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // Bulk score leads
+  bulkScoreLeads = async (req, res, next) => {
+    try {
+      const { leadIds } = req.body;
+      
+      if (!leadIds || !Array.isArray(leadIds)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Lead IDs array is required'
+        });
+      }
+
+      const LeadScoringService = require('../services/leadScoringService');
+      const scoringService = new LeadScoringService();
+      
+      const leads = [];
+      for (const id of leadIds) {
+        const lead = await this.leadService.findById(id);
+        if (lead) {
+          leads.push(lead);
+        }
+      }
+
+      const updatedLeads = await scoringService.batchUpdateScores(leads);
+      
+      // Save updated leads
+      for (const lead of updatedLeads) {
+        await lead.save();
+      }
+      
+      res.json({
+        success: true,
+        message: `${updatedLeads.length} leads scored successfully`,
+        data: {
+          scoredCount: updatedLeads.length,
+          leads: updatedLeads.map(lead => ({
+            id: lead.id,
+            lead_score: lead.lead_score,
+            classification: lead.scoring_metadata?.classification
+          }))
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 module.exports = LeadController;

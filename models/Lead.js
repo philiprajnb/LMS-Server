@@ -210,11 +210,22 @@ leadSchema.virtual('company_info').get(function() {
   };
 });
 
-// Pre-save middleware to ensure email is lowercase
-leadSchema.pre('save', function(next) {
+// Pre-save middleware to ensure email is lowercase and calculate lead score
+leadSchema.pre('save', async function(next) {
   if (this.email) {
     this.email = this.email.toLowerCase();
   }
+  
+  // Auto-calculate lead score before saving
+  try {
+    const LeadScoringService = require('../services/leadScoringService');
+    const scoringService = new LeadScoringService();
+    await scoringService.updateLeadScore(this);
+  } catch (error) {
+    console.error('Error calculating lead score:', error);
+    // Don't fail the save operation if scoring fails
+  }
+  
   next();
 });
 
