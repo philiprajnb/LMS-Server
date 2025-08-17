@@ -1,4 +1,5 @@
 const LeadService = require('../services/leadService');
+const Lead = require('../models/Lead');
 
 class LeadController {
   constructor() {
@@ -302,6 +303,191 @@ class LeadController {
             classification: lead.scoring_metadata?.classification
           }))
         }
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // Get leads by classification (Hot, Warm, Cold, Disqualified)
+  getLeadsByClassification = async (req, res, next) => {
+    try {
+      const { type } = req.params;
+      const { page = 1, limit = 10, sort_by = 'lead_score', sort_order = 'desc' } = req.query;
+
+      // Validate classification type
+      const validTypes = ['hot', 'warm', 'cold', 'disqualified'];
+      if (!validTypes.includes(type.toLowerCase())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid classification type. Must be: hot, warm, cold, or disqualified'
+        });
+      }
+
+      // Define score ranges for each classification
+      const scoreRanges = {
+        hot: { min: 70, max: 100 },
+        warm: { min: 40, max: 69 },
+        cold: { min: 0, max: 39 },
+        disqualified: { min: -100, max: -1 }
+      };
+
+      const range = scoreRanges[type.toLowerCase()];
+      
+      // Build filter for score range
+      const filter = {
+        lead_score: { $gte: range.min, $lte: range.max }
+      };
+
+      // Execute query with pagination
+      const skip = (page - 1) * limit;
+      
+      const [leads, totalItems] = await Promise.all([
+        Lead.find(filter)
+          .sort({ [sort_by]: sort_order === 'asc' ? 1 : -1 })
+          .skip(skip)
+          .limit(parseInt(limit)),
+        Lead.countDocuments(filter)
+      ]);
+
+      const totalPages = Math.ceil(totalItems / limit);
+
+      res.json({
+        success: true,
+        message: `${type.charAt(0).toUpperCase() + type.slice(1)} leads retrieved successfully`,
+        data: {
+          classification: type.toLowerCase(),
+          score_range: range,
+          leads: leads,
+          pagination: {
+            current_page: parseInt(page),
+            per_page: parseInt(limit),
+            total_items: totalItems,
+            total_pages: totalPages,
+            has_next_page: page < totalPages,
+            has_prev_page: page > 1
+          }
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // Get statistics for a specific classification
+  getClassificationStats = async (req, res, next) => {
+    try {
+      const { type } = req.params;
+
+      // Validate classification type
+      const validTypes = ['hot', 'warm', 'cold', 'disqualified'];
+      if (!validTypes.includes(type.toLowerCase())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid classification type. Must be: hot, warm, cold, or disqualified'
+        });
+      }
+
+      // Define score ranges for each classification
+      const scoreRanges = {
+        hot: { min: 70, max: 100 },
+        warm: { min: 40, max: 69 },
+        cold: { min: 0, max: 39 },
+        disqualified: { min: -100, max: -1 }
+      };
+
+      const range = scoreRanges[type.toLowerCase()];
+
+      // Get detailed statistics for the classification
+      const stats = await Lead.aggregate([
+        {
+          $match: {
+            lead_score: { $gte: range.min, $lte: range.max }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total_leads: { $sum: 1 },
+            average_score: { $avg: '$lead_score' },
+            min_score: { $min: '$lead_score' },
+            max_score: { $max: '$lead_score' },
+            by_status: { $push: '$status' },
+            by_priority: { $push: '$priority' },
+            by_industry: { $push: '$industry' },
+            by_role: { $push: '$role_in_decision' }
+          }
+        }
+      ]);
+
+      // Get status distribution
+      const statusDistribution = await Lead.aggregate([
+        {
+          $match: {
+            lead_score: { $gte: range.min, $lte: range.max }
+          }
+        },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } }
+      ]);
+
+      // Get priority distribution
+      const priorityDistribution = await Lead.aggregate([
+        {
+          $match: {
+            lead_score: { $gte: range.min, $lte: range.max }
+          }
+        },
+        {
+          $group: {
+            _id: '$priority',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } }
+      ]);
+
+      // Get industry distribution
+      const industryDistribution = await Lead.aggregate([
+        {
+          $match: {
+            lead_score: { $gte: range.min, $lte: range.max },
+            industry: { $exists: true, $ne: null }
+          }
+        },
+        {
+          $group: {
+            _id: '$industry',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]);
+
+      const result = {
+        classification: type.toLowerCase(),
+        score_range: range,
+        overview: stats[0] || {
+          total_leads: 0,
+          average_score: 0,
+          min_score: 0,
+          max_score: 0
+        },
+        status_distribution: statusDistribution,
+        priority_distribution: priorityDistribution,
+        industry_distribution: industryDistribution
+      };
+
+      res.json({
+        success: true,
+        message: `${type.charAt(0).toUpperCase() + type.slice(1)} leads statistics retrieved successfully`,
+        data: result
       });
     } catch (error) {
       next(error);

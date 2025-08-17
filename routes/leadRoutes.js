@@ -26,4 +26,8 @@ router.get('/:id/scoring', validateLeadId, leadController.getLeadScoring);
 router.get('/:id/recommendations', validateLeadId, leadController.getLeadRecommendations);
 router.post('/bulk/score', leadController.bulkScoreLeads);
 
+// Lead classification endpoints
+router.get('/classification/:type', leadController.getLeadsByClassification);
+router.get('/classification/:type/stats', leadController.getClassificationStats);
+
 module.exports = router;

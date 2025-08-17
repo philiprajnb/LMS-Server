@@ -109,7 +109,9 @@ app.get('/api', (req, res) => {
         'POST /api/leads/bulk/delete': 'Bulk delete multiple leads',
         'GET /api/leads/:id/scoring': 'Get lead scoring analysis and breakdown',
         'GET /api/leads/:id/recommendations': 'Get lead scoring recommendations',
-        'POST /api/leads/bulk/score': 'Bulk score multiple leads'
+        'POST /api/leads/bulk/score': 'Bulk score multiple leads',
+        'GET /api/leads/classification/:type': 'Get leads by classification (hot, warm, cold, disqualified)',
+        'GET /api/leads/classification/:type/stats': 'Get statistics for specific classification'
       }
     },
     schema: {
