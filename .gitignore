@@ -137,3 +137,8 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Local planning and implementation notes
+AssignmentEngine_Frontend_Wiring.md
+Frontend_API_Contract_Validated.md
+PromoteUserToAdmin.md
