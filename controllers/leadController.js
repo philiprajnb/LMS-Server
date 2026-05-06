@@ -1,5 +1,6 @@
 const LeadService = require('../services/leadService');
 const Lead = require('../models/Lead');
+const { autoAssignLead, suggestAgentsForLead } = require('../services/assignmentRuleEngine');
 
 class LeadController {
   constructor() {
@@ -493,6 +494,83 @@ class LeadController {
       next(error);
     }
   };
-}
 
-module.exports = LeadController;
+  /**
+   * POST /api/leads/:id/auto-assign
+   * Run a single lead through the rule engine.
+   */
+  autoAssignLead = async (req, res, next) => {
+    try {
+      const lead = await Lead.findOne({ id: req.params.id });
+      if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+      const result = await autoAssignLead(lead, req.user.id);
+      res.json({ success: true, message: 'Lead assigned successfully', data: result });
+    } catch (err) {
+      const statusCode = err.code === 'AGENT_AT_CAPACITY' ? 409
+                       : err.code === 'NO_DEFAULT_QUEUE'   ? 422
+                       : err.code === 'QUEUE_FULL'         ? 409
+                       : 400;
+      if (err.code) return res.status(statusCode).json({ success: false, message: err.message, code: err.code });
+      next(err);
+    }
+  };
+
+  /**
+   * POST /api/leads/bulk/auto-assign
+   * Body: { lead_ids: [...] } or omit for all unassigned leads.
+   */
+  bulkAutoAssignLeads = async (req, res, next) => {
+    try {
+      const { lead_ids } = req.body || {};
+
+      let filter;
+      if (lead_ids && Array.isArray(lead_ids) && lead_ids.length > 0) {
+        filter = { id: { $in: lead_ids }, deleted_at: { $exists: false } };
+      } else {
+        filter = { owner_type: 'unassigned', deleted_at: { $exists: false } };
+      }
+
+      const leads = await Lead.find(filter).limit(200);
+      if (leads.length === 0) {
+        return res.json({ success: true, message: 'No leads to assign', data: { assigned: 0, failed: 0, results: [] } });
+      }
+
+      const results = await Promise.allSettled(
+        leads.map(lead => autoAssignLead(lead, req.user.id).then(r => ({ lead_id: lead.id, ...r })))
+      );
+
+      const summary = results.reduce((acc, r) => {
+        if (r.status === 'fulfilled') {
+          acc.assigned++;
+          acc.results.push({ lead_id: r.value.lead_id, status: 'assigned', ...r.value });
+        } else {
+          acc.failed++;
+          acc.results.push({ lead_id: null, status: 'failed', error: r.reason?.message || 'Unknown error' });
+        }
+        return acc;
+      }, { assigned: 0, failed: 0, results: [] });
+
+      res.json({ success: true, data: summary });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * GET /api/leads/:id/suggested-agents
+   * Returns ranked list of agents best suited for this lead.
+   */
+  getSuggestedAgents = async (req, res, next) => {
+    try {
+      const lead = await Lead.findOne({ id: req.params.id });
+      if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+      const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+      const suggestions = await suggestAgentsForLead(lead, limit);
+      res.json({ success: true, data: suggestions });
+    } catch (error) {
+      next(error);
+    }
+  };
+}module.exports = LeadController;

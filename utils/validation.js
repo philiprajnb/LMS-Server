@@ -128,10 +128,171 @@ const querySchema = Joi.object({
 
 // UUID parameter schema
 const uuidSchema = Joi.string().uuid().required();
+const idParamSchema = Joi.object({
+  id: uuidSchema
+});
+
+// Common query fields for reporting/dashboard endpoints
+const dateRangeQuerySchema = Joi.object({
+  from: Joi.date().iso().optional(),
+  to: Joi.date().iso().optional(),
+  owner_id: Joi.string().uuid().optional(),
+  region: Joi.string().trim().max(50).optional()
+});
+
+// Agent schemas
+const createAgentSchema = Joi.object({
+  name: Joi.string().required().trim().min(1).max(100),
+  email: Joi.string().email().required().trim().lowercase().max(100),
+  phone: Joi.string().optional().allow('').pattern(/^[\+]?[0-9\s\-\(\)]{10,20}$/).max(20),
+  region: Joi.string().optional().allow('').max(50).default('Global'),
+  max_capacity: Joi.number().integer().min(1).max(10000).default(50),
+  availability: Joi.string().valid('available', 'busy', 'offline').default('available'),
+  is_locked: Joi.boolean().optional(),
+  is_active: Joi.boolean().optional()
+});
+
+const updateAgentSchema = Joi.object({
+  name: Joi.string().optional().trim().min(1).max(100),
+  email: Joi.string().email().optional().trim().lowercase().max(100),
+  phone: Joi.string().optional().allow('').pattern(/^[\+]?[0-9\s\-\(\)]{10,20}$/).max(20),
+  region: Joi.string().optional().allow('').max(50),
+  max_capacity: Joi.number().integer().min(1).max(10000).optional(),
+  availability: Joi.string().valid('available', 'busy', 'offline').optional(),
+  is_locked: Joi.boolean().optional(),
+  is_active: Joi.boolean().optional()
+}).min(1);
+
+const agentListQuerySchema = Joi.object({
+  region: Joi.string().optional().max(50),
+  availability: Joi.string().valid('available', 'busy', 'offline').optional(),
+  is_locked: Joi.boolean().optional(),
+  is_active: Joi.boolean().optional().default(true)
+});
+
+const assignLeadsSchema = Joi.object({
+  lead_ids: Joi.array().items(Joi.string().uuid()).min(1).required(),
+  reason: Joi.string().optional().allow('').max(500)
+});
+
+const reassignLeadsSchema = Joi.object({
+  lead_ids: Joi.array().items(Joi.string().uuid()).min(1).required(),
+  from_agent_id: Joi.string().uuid().optional(),
+  reason: Joi.string().optional().allow('').max(500)
+});
+
+// Reports and dashboard query schemas
+const dashboardSummaryQuerySchema = dateRangeQuerySchema;
+const reportsQuerySchema = dateRangeQuerySchema.keys({
+  agent_id: Joi.string().uuid().optional()
+});
+
+// Audit query schema
+const auditQuerySchema = Joi.object({
+  actor_id: Joi.string().optional(),
+  entity_type: Joi.string().optional().max(50),
+  entity_id: Joi.string().optional().max(100),
+  action: Joi.string().optional().max(50),
+  from: Joi.date().iso().optional(),
+  to: Joi.date().iso().optional(),
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20)
+});
+
+// Auth admin bootstrap schema
+const promoteAdminSchema = Joi.object({
+  email: Joi.string().email().required().trim().lowercase().max(100),
+  reason: Joi.string().optional().allow('').max(500)
+});
+
+// ---------------------------------------------------------------------------
+// Assignment Rule schemas
+// ---------------------------------------------------------------------------
+const criterionSchema = Joi.object({
+  type: Joi.string().valid('geography', 'source', 'score_band', 'industry', 'company_size', 'priority', 'tag').required(),
+  field: Joi.string().max(50).when('type', { is: 'geography', then: Joi.valid('country', 'state', 'city'), otherwise: Joi.optional() }),
+  operator: Joi.string().valid('eq', 'neq', 'contains', 'gte', 'lte', 'between', 'in').default('eq'),
+  value: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
+  min: Joi.number().optional(),
+  max: Joi.number().optional(),
+  values: Joi.array().items(Joi.string()).optional()
+});
+
+const createAssignmentRuleSchema = Joi.object({
+  name: Joi.string().required().trim().max(100),
+  description: Joi.string().optional().allow('').max(500),
+  priority: Joi.number().integer().min(1).required(),
+  criteria: Joi.array().items(criterionSchema).default([]),
+  assignment_method: Joi.string().valid('direct', 'round_robin', 'queue').required(),
+  target_agent_id: Joi.string().uuid().when('assignment_method', { is: 'direct', then: Joi.required(), otherwise: Joi.optional() }),
+  target_queue_id: Joi.string().uuid().when('assignment_method', { is: 'queue', then: Joi.required(), otherwise: Joi.optional() }),
+  agent_pool: Joi.array().items(Joi.string().uuid()).when('assignment_method', { is: 'round_robin', then: Joi.array().items(Joi.string().uuid()).min(1).required(), otherwise: Joi.optional() })
+});
+
+const updateAssignmentRuleSchema = Joi.object({
+  name: Joi.string().trim().max(100),
+  description: Joi.string().allow('').max(500),
+  priority: Joi.number().integer().min(1),
+  criteria: Joi.array().items(criterionSchema),
+  assignment_method: Joi.string().valid('direct', 'round_robin', 'queue'),
+  target_agent_id: Joi.string().uuid(),
+  target_queue_id: Joi.string().uuid(),
+  agent_pool: Joi.array().items(Joi.string().uuid())
+}).min(1);
+
+const reorderRulesSchema = Joi.object({
+  rules: Joi.array().items(
+    Joi.object({ id: Joi.string().uuid().required(), priority: Joi.number().integer().min(1).required() })
+  ).min(1).required()
+});
+
+// ---------------------------------------------------------------------------
+// Lead Queue schemas
+// ---------------------------------------------------------------------------
+const createQueueSchema = Joi.object({
+  name: Joi.string().required().trim().max(100),
+  description: Joi.string().optional().allow('').max(500),
+  is_default: Joi.boolean().default(false),
+  routing_strategy: Joi.string().valid('round_robin', 'first_available', 'manual').default('manual'),
+  member_agent_ids: Joi.array().items(Joi.string().uuid()).default([]),
+  max_size: Joi.number().integer().min(0).default(0),
+  sla_hours: Joi.number().integer().min(1).default(24)
+});
+
+const updateQueueSchema = Joi.object({
+  name: Joi.string().trim().max(100),
+  description: Joi.string().allow('').max(500),
+  is_default: Joi.boolean(),
+  is_active: Joi.boolean(),
+  routing_strategy: Joi.string().valid('round_robin', 'first_available', 'manual'),
+  member_agent_ids: Joi.array().items(Joi.string().uuid()),
+  max_size: Joi.number().integer().min(0),
+  sla_hours: Joi.number().integer().min(1)
+}).min(1);
+
+const claimLeadSchema = Joi.object({
+  lead_id: Joi.string().uuid().required()
+});
 
 module.exports = {
   createLeadSchema,
   updateLeadSchema,
   querySchema,
-  uuidSchema
+  uuidSchema,
+  idParamSchema,
+  createAgentSchema,
+  updateAgentSchema,
+  agentListQuerySchema,
+  assignLeadsSchema,
+  reassignLeadsSchema,
+  dashboardSummaryQuerySchema,
+  reportsQuerySchema,
+  auditQuerySchema,
+  promoteAdminSchema,
+  createAssignmentRuleSchema,
+  updateAssignmentRuleSchema,
+  reorderRulesSchema,
+  createQueueSchema,
+  updateQueueSchema,
+  claimLeadSchema
 };

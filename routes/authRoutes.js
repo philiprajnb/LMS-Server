@@ -4,9 +4,11 @@ const {
   login, 
   getProfile, 
   updateProfile, 
-  changePassword 
+  changePassword,
+  promoteToAdmin
 } = require('../controllers/authController');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
+const { validatePromoteAdmin } = require('../middleware/validation');
 
 const router = express.Router();
 
@@ -34,5 +36,15 @@ router.put('/profile', auth, updateProfile);
 // @desc    Change user password
 // @access  Private
 router.put('/change-password', auth, changePassword);
+
+// @route   PUT /api/auth/password
+// @desc    Change user password (alias)
+// @access  Private
+router.put('/password', auth, changePassword);
+
+// @route   POST /api/auth/admin/promote
+// @desc    Promote an existing user to admin role
+// @access  Private (admin)
+router.post('/admin/promote', auth, authorize('admin'), validatePromoteAdmin, promoteToAdmin);
 
 module.exports = router;

@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const AuditLog = require('../models/AuditLog');
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -249,10 +250,98 @@ const changePassword = async (req, res) => {
   }
 };
 
+// @desc    Promote an existing user to admin role
+// @route   POST /api/auth/admin/promote
+// @access  Private (admin only)
+const promoteToAdmin = async (req, res) => {
+  try {
+    const { email, reason } = req.body;
+
+    // Optional additional guard for high-risk role elevation
+    if (process.env.BOOTSTRAP_ADMIN_KEY) {
+      const providedKey = req.header('x-bootstrap-key');
+      if (!providedKey || providedKey !== process.env.BOOTSTRAP_ADMIN_KEY) {
+        return res.status(403).json({
+          success: false,
+          message: 'Invalid bootstrap key'
+        });
+      }
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot promote an inactive user'
+      });
+    }
+
+    if (user.role === 'admin') {
+      return res.status(200).json({
+        success: true,
+        message: 'User is already an admin',
+        data: {
+          user: user.toJSON()
+        }
+      });
+    }
+
+    const previousRole = user.role;
+    user.role = 'admin';
+    await user.save();
+
+    try {
+      await AuditLog.create({
+        actor_id: req.user?._id?.toString() || req.user?.id,
+        actor_role: req.user?.role,
+        action: 'promote_to_admin',
+        entity_type: 'user',
+        entity_id: user._id.toString(),
+        changes: {
+          role: {
+            from: previousRole,
+            to: 'admin'
+          }
+        },
+        reason,
+        metadata: {
+          ip: req.ip,
+          user_agent: req.get('User-Agent')
+        }
+      });
+    } catch (auditError) {
+      console.error('Audit logging error during promotion:', auditError.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'User promoted to admin successfully',
+      data: {
+        user: user.toJSON()
+      }
+    });
+  } catch (error) {
+    console.error('Promote admin error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while promoting user to admin'
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
   getProfile,
   updateProfile,
-  changePassword
+  changePassword,
+  promoteToAdmin
 };

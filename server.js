@@ -11,6 +11,12 @@ const connectDB = require('./config/database');
 // Import routes
 const leadRoutes = require('./routes/leadRoutes');
 const authRoutes = require('./routes/authRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
+const agentRoutes = require('./routes/agentRoutes');
+const reportRoutes = require('./routes/reportRoutes');
+const auditRoutes = require('./routes/auditRoutes');
+const assignmentRuleRoutes = require('./routes/assignmentRuleRoutes');
+const queueRoutes = require('./routes/queueRoutes');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -20,14 +26,37 @@ connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isDevelopment = (process.env.NODE_ENV || 'development') === 'development';
 
 // Security middleware
 app.use(helmet());
 
+// CORS configuration
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = process.env.ALLOWED_ORIGINS ? 
+      process.env.ALLOWED_ORIGINS.split(',') : 
+      ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'http://127.0.0.1:3002'];
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: Number(process.env.RATE_LIMIT_MAX || (isDevelopment ? 1000 : 100)),
+  skip: (req) => req.method === 'OPTIONS',
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
@@ -38,7 +67,8 @@ app.use('/api/', limiter);
 // Stricter rate limiting for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 auth requests per windowMs
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || (isDevelopment ? 50 : 5)),
+  skip: (req) => req.method === 'OPTIONS',
   message: {
     success: false,
     message: 'Too many authentication attempts, please try again later.'
@@ -46,28 +76,6 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
-
-// CORS configuration
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = process.env.ALLOWED_ORIGINS ? 
-      process.env.ALLOWED_ORIGINS.split(',') : 
-      ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'];
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true,
-  optionsSuccessStatus: 200
-}));
 
 // Logging middleware
 app.use(morgan('combined'));
@@ -89,6 +97,12 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/leads', leadRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agents', agentRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/audit-logs', auditRoutes);
+app.use('/api/assignment-rules', assignmentRuleRoutes);
+app.use('/api/queues', queueRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {
@@ -97,6 +111,15 @@ app.get('/api', (req, res) => {
     message: 'Lead Management System API',
     version: '1.0.0',
     endpoints: {
+      auth: {
+        'POST /api/auth/register': 'Register a new user',
+        'POST /api/auth/login': 'Login user',
+        'GET /api/auth/profile': 'Get current user profile',
+        'PUT /api/auth/profile': 'Update current user profile',
+        'PUT /api/auth/change-password': 'Change current user password',
+        'PUT /api/auth/password': 'Change current user password (alias)',
+        'POST /api/auth/admin/promote': 'Promote an existing user to admin (admin only)'
+      },
       leads: {
         'POST /api/leads': 'Create a new lead',
         'GET /api/leads': 'Get all leads with filtering, pagination, and sorting',
@@ -112,6 +135,28 @@ app.get('/api', (req, res) => {
         'POST /api/leads/bulk/score': 'Bulk score multiple leads',
         'GET /api/leads/classification/:type': 'Get leads by classification (hot, warm, cold, disqualified)',
         'GET /api/leads/classification/:type/stats': 'Get statistics for specific classification'
+      },
+      dashboard: {
+        'GET /api/dashboard/summary': 'Get dashboard summary data'
+      },
+      agents: {
+        'GET /api/agents': 'List agents',
+        'GET /api/agents/:id': 'Get agent by ID',
+        'POST /api/agents': 'Create a new agent',
+        'PUT /api/agents/:id': 'Update agent',
+        'GET /api/agents/:id/capacity': 'Get agent capacity',
+        'POST /api/agents/:id/assign': 'Assign leads to agent',
+        'POST /api/agents/:id/reassign': 'Reassign leads to another agent'
+      },
+      reports: {
+        'GET /api/reports/conversion-metrics': 'Get conversion metrics report',
+        'GET /api/reports/leads-by-source': 'Get leads by source report',
+        'GET /api/reports/leads-by-stage': 'Get leads by stage report',
+        'GET /api/reports/leads-by-region': 'Get leads by region report',
+        'GET /api/reports/agent-performance': 'Get agent performance report'
+      },
+      audit_logs: {
+        'GET /api/audit-logs': 'Get audit log entries with filters'
       }
     },
     schema: {

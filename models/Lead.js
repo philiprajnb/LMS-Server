@@ -137,6 +137,48 @@ const leadSchema = new mongoose.Schema({
     type: String, // UUID reference to users table
     trim: true
   },
+  // 'agent' = directly assigned, 'queue' = sitting in a queue, 'unassigned' = no owner
+  owner_type: {
+    type: String,
+    enum: ['agent', 'queue', 'unassigned'],
+    default: 'unassigned'
+  },
+  // Which assignment rule matched (UUID)
+  assignment_rule_id: {
+    type: String,
+    trim: true
+  },
+  // Which queue this lead belongs to (UUID)
+  assignment_queue_id: {
+    type: String,
+    trim: true
+  },
+  // Agent who claimed from queue
+  claimed_by: {
+    type: String,
+    trim: true
+  },
+  claimed_at: {
+    type: Date
+  },
+  // SLA deadline calculated from queue.sla_hours
+  sla_due_at: {
+    type: Date
+  },
+  // Full assignment history
+  assignment_history: [{
+    assigned_to: { type: String, trim: true },
+    assigned_by: { type: String, trim: true },
+    assignment_method: {
+      type: String,
+      enum: ['direct', 'round_robin', 'queue', 'manual', 'auto']
+    },
+    rule_id: { type: String, trim: true },
+    rule_name: { type: String, trim: true },
+    queue_id: { type: String, trim: true },
+    reason: { type: String, trim: true, maxlength: 500 },
+    assigned_at: { type: Date, default: Date.now }
+  }],
   next_follow_up: {
     type: Date
   },
@@ -192,6 +234,10 @@ leadSchema.index({ email: 1 });
 leadSchema.index({ company_name: 1 });
 leadSchema.index({ status: 1 });
 leadSchema.index({ assigned_to: 1 });
+leadSchema.index({ owner_type: 1 });
+leadSchema.index({ assignment_queue_id: 1 });
+leadSchema.index({ assignment_rule_id: 1 });
+leadSchema.index({ sla_due_at: 1 });
 leadSchema.index({ created_at: -1 });
 leadSchema.index({ next_follow_up: 1 });
 leadSchema.index({ is_converted: 1 });
@@ -295,10 +341,19 @@ leadSchema.pre(/^find/, function(next) {
   next();
 });
 
-// Method to convert to JSON (excluding deleted_at by default)
+// Method to convert to JSON (excluding internal fields)
 leadSchema.methods.toJSON = function() {
   const leadObject = this.toObject();
+  delete leadObject._id;
+  delete leadObject.__v;
   delete leadObject.deleted_at;
+  if (Array.isArray(leadObject.assignment_history)) {
+    leadObject.assignment_history = leadObject.assignment_history.map(h => {
+      const entry = { ...h };
+      delete entry._id;
+      return entry;
+    });
+  }
   return leadObject;
 };
 

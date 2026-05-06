@@ -1,4 +1,25 @@
-const { createLeadSchema, updateLeadSchema, querySchema, uuidSchema } = require('../utils/validation');
+const {
+  createLeadSchema,
+  updateLeadSchema,
+  querySchema,
+  uuidSchema,
+  idParamSchema,
+  createAgentSchema,
+  updateAgentSchema,
+  agentListQuerySchema,
+  assignLeadsSchema,
+  reassignLeadsSchema,
+  dashboardSummaryQuerySchema,
+  reportsQuerySchema,
+  auditQuerySchema,
+  promoteAdminSchema,
+  createAssignmentRuleSchema,
+  updateAssignmentRuleSchema,
+  reorderRulesSchema,
+  createQueueSchema,
+  updateQueueSchema,
+  claimLeadSchema
+} = require('../utils/validation');
 
 // Generic validation middleware factory
 const validate = (schema, source = 'body') => {
@@ -43,7 +64,22 @@ const validate = (schema, source = 'body') => {
 const validateCreateLead = validate(createLeadSchema, 'body');
 const validateUpdateLead = validate(updateLeadSchema, 'body');
 const validateQueryParams = validate(querySchema, 'query');
-const validateUuidParam = validate(uuidSchema, 'params');
+const validateUuidParam = validate(idParamSchema, 'params');
+const validateCreateAgent = validate(createAgentSchema, 'body');
+const validateUpdateAgent = validate(updateAgentSchema, 'body');
+const validateAgentListQuery = validate(agentListQuerySchema, 'query');
+const validateAssignLeads = validate(assignLeadsSchema, 'body');
+const validateReassignLeads = validate(reassignLeadsSchema, 'body');
+const validateDashboardSummaryQuery = validate(dashboardSummaryQuerySchema, 'query');
+const validateReportsQuery = validate(reportsQuerySchema, 'query');
+const validateAuditQuery = validate(auditQuerySchema, 'query');
+const validatePromoteAdmin = validate(promoteAdminSchema, 'body');
+const validateCreateAssignmentRule = validate(createAssignmentRuleSchema, 'body');
+const validateUpdateAssignmentRule = validate(updateAssignmentRuleSchema, 'body');
+const validateReorderRules = validate(reorderRulesSchema, 'body');
+const validateCreateQueue = validate(createQueueSchema, 'body');
+const validateUpdateQueue = validate(updateQueueSchema, 'body');
+const validateClaimLead = validate(claimLeadSchema, 'body');
 
 // Custom middleware to validate UUID in params
 const validateLeadId = (req, res, next) => {
@@ -66,5 +102,20 @@ module.exports = {
   validateUpdateLead,
   validateQueryParams,
   validateUuidParam,
-  validateLeadId
+  validateLeadId,
+  validateCreateAgent,
+  validateUpdateAgent,
+  validateAgentListQuery,
+  validateAssignLeads,
+  validateReassignLeads,
+  validateDashboardSummaryQuery,
+  validateReportsQuery,
+  validateAuditQuery,
+  validatePromoteAdmin,
+  validateCreateAssignmentRule,
+  validateUpdateAssignmentRule,
+  validateReorderRules,
+  validateCreateQueue,
+  validateUpdateQueue,
+  validateClaimLead
 };
