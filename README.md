@@ -117,4 +117,4 @@ Detailed endpoint documentation lives in `API_DOCUMENTATION.md`.
 
 ## License
 
-ISC
+MIT
